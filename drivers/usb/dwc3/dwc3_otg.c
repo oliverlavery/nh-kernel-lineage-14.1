@@ -213,24 +213,21 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 //	struct usb_phy *phy = dotg->otg.phy;
 	
 	int ret = 0;
-
-	if (!dwc->xhci)
-		return -EINVAL;
 	
-	//Check for false aca_enable to enable vbus	
-    if(!aca_enable){
-	  if (!dotg->vbus_otg) {
-		dotg->vbus_otg = devm_regulator_get(dwc->dev->parent,
-							"vbus_dwc3");
-		if (IS_ERR(dotg->vbus_otg)) {
-			dev_err(dwc->dev, "Failed to get vbus regulator\n");
+    if (!dwc->xhci)
+		return -EINVAL;
+
+    if (!dotg->vbus_otg) {
+        dotg->vbus_otg = devm_regulator_get(dwc->dev->parent,
+                        "vbus_dwc3");
+        if (IS_ERR(dotg->vbus_otg)) {
+            dev_err(dwc->dev, "Failed to get vbus regulator\n");
 			ret = PTR_ERR(dotg->vbus_otg);
 			dotg->vbus_otg = 0;
 			return ret;
 		}
 	  }
-     }
-     
+    
 	if (on) {
 		dev_dbg(otg->phy->dev, "%s: turn on host\n", __func__);
 
@@ -291,7 +288,8 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 	} else {
 		dev_dbg(otg->phy->dev, "%s: turn off host\n", __func__);
 
-        if(!aca_enable){
+        
+        if(regulator_is_enabled(dotg->vbus_otg)){
 		ret = regulator_disable(dotg->vbus_otg);
 		if (ret) {
 			dev_err(otg->phy->dev, "unable to disable vbus_otg\n");
@@ -625,7 +623,7 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
 		
 		//Detect as regular charger for notification
-		if(aca_enable)
+		if(dotg->otg.phy->state == OTG_STATE_A_HOST && mA)
 			power_supply_type = POWER_SUPPLY_TYPE_USB;
 
 	power_supply_set_supply_type(dotg->psy, power_supply_type);
@@ -1080,10 +1078,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		if (test_bit(ID_MODE, &dotg->inputs)) {
 			dev_dbg(phy->dev, "id\n");
 			
-			if(aca_enable){
-			   //Set power to off
-			   dwc3_otg_set_power(phy, 0);
-			} 
+			//Set power to off
+			dwc3_otg_set_power(phy, 0);
 
 			dwc3_otg_start_host(&dotg->otg, 0);
 			phy->state = OTG_STATE_B_IDLE;
